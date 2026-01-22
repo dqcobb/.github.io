@@ -2,80 +2,103 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QR Code 掃描器（含中轉跳轉）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QR Code 智慧掃描跳轉器</title>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
 <style>
-body{
-    margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
-    background:#f2f4f8;
+:root { --primary-color: #007bff; --success-color: #28a745; --error-color: #dc3545; }
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f2f4f8;
+    color: #333;
 }
-.container{
-    max-width:480px;
-    margin:auto;
-    padding:20px;
-}
-.card{
-    background:#fff;
-    border-radius:18px;
-    padding:24px;
-    box-shadow:0 6px 20px rgba(0,0,0,.08);
-}
-h1{
-    font-size:clamp(22px,5vw,28px);
-}
-button,label{
-    display:block;
-    width:100%;
-    height:56px;
-    font-size:18px;
-    border-radius:14px;
-    border:none;
-    background:#007bff;
-    color:white;
-    margin:12px 0;
-    cursor:pointer;
+.container { max-width: 480px; margin: auto; padding: 20px; }
+.card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
     text-align: center;
+}
+h1 { font-size: 24px; margin-bottom: 8px; color: #1a1a1a; }
+p { font-size: 14px; color: #666; margin-bottom: 24px; }
+
+/* 按鈕樣式 */
+.btn {
+    display: block;
+    width: 100%;
+    height: 56px;
     line-height: 56px;
+    font-size: 18px;
+    font-weight: 600;
+    border-radius: 14px;
+    border: none;
+    margin: 12px 0;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
     text-decoration: none;
 }
-#status{
-    margin-top:18px;
-    font-size:clamp(16px,4vw,18px);
+.btn-upload { background: var(--primary-color); color: white; }
+.btn-camera { background: #333; color: white; }
+.btn:active { transform: scale(0.98); opacity: 0.9; }
+
+#status {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 15px;
+    min-height: 40px;
     word-break: break-all;
+    background: #f8f9fa;
 }
-video{
-    width:100%;
-    margin-top:16px;
-    border-radius:16px;
-    display:none;
+
+/* 影片與畫布 */
+video {
+    width: 100%;
+    margin-top: 16px;
+    border-radius: 16px;
+    display: none;
+    background: #000;
 }
-canvas{display:none}
+canvas { display: none; }
+
+/* 載入動畫 */
+.spinner {
+    display: none;
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(0,123,255,.2);
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 10px auto;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 </head>
 
 <body>
 <div class="container">
-<div class="card">
+    <div class="card">
+        <h1>QR Code 自動跳轉</h1>
+        <p>支援穿透區域封鎖 (ScraperAPI)</p>
 
-<h1>QR Code 自動掃描</h1>
+        <label class="btn btn-upload">
+            📁 選擇圖片 / 拍照
+            <input type="file" accept="image/*" hidden id="upload">
+        </label>
 
-<label>
-📁 選擇圖片
-<input type="file" accept="image/*" hidden id="upload">
-</label>
+        <button class="btn btn-camera" onclick="startCamera()">📷 開啟相機掃描</button>
 
-<button onclick="startCamera()">📷 開啟相機掃描</button>
+        <div id="loader" class="spinner"></div>
+        <div id="status">準備就緒，請操作</div>
 
-<video id="video" autoplay playsinline></video>
-<canvas id="canvas"></canvas>
-
-<div id="status">請選擇圖片或使用相機掃描</div>
-
-</div>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
 </div>
 
 <script>
@@ -84,14 +107,17 @@ const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const status = document.getElementById("status");
+const loader = document.getElementById("loader");
 
-// 修改這裡：請放入你部署好的 Cloudflare Worker 網址
-const PROXY_URL = "https://qr-proxy.ibn957.workers.dev/?target=";
+// ==========================================
+// 1. 設定區：填入你的 ScraperAPI Key
+// ==========================================
+const SCRAPER_API_KEY = "5ddbe6f1681816637ad2856f7c3d56b2"; 
 
 let scanning = false;
 
 /* ===== 每日 Log 系統 ===== */
-const today = new Date().toISOString().slice(0,10); 
+const today = new Date().toISOString().slice(0,10);
 const STORAGE_KEY = "QR_LOG_" + today;
 let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 
@@ -99,99 +125,106 @@ function saveLog(source, content){
     const time = new Date().toLocaleString("zh-TW",{hour12:false});
     logs.push({ time, source, content });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
-
-    let csv = "Date,Time,Source,Content\n";
-    logs.forEach(l=>{
-        csv += `${today},${l.time},${l.source},"${l.content}"\n`;
-    });
-
-    const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+    
+    // 產生並觸發下載 CSV (靜默紀錄)
+    let csv = "日期,時間,來源,內容\n";
+    logs.forEach(l => csv += `${today},${l.time},${l.source},"${l.content}"\n`);
+    const blob = new Blob(["\ufeff" + csv], { type:"text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `QR_Scan_Log_${today}.csv`;
+    a.download = `QR_Log_${today}.csv`;
     a.click();
     URL.revokeObjectURL(url);
 }
 
-/* ===== 執行跳轉邏輯 ===== */
-function handleRedirect(originalUrl) {
-    if(originalUrl.startsWith('http')) {
-        // 使用 Cloudflare Worker 中轉跳轉
-        const finalUrl = PROXY_URL + encodeURIComponent(originalUrl);
-        status.innerHTML += `<br><small>代理跳轉中...</small>`;
-        setTimeout(() => location.href = finalUrl, 1200);
+/* ===== 核心跳轉邏輯 (ScraperAPI 中轉) ===== */
+function handleRedirect(qrData) {
+    if (qrData.startsWith('http')) {
+        loader.style.display = "block";
+        status.innerHTML = `<b style="color:var(--success-color)">辨識成功！</b><br>正在透過 ScraperAPI 穿透封鎖...`;
+        
+        // 構建穿透網址：強制使用美國 IP (us)，模擬手機裝置
+        const finalUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(qrData)}&country_code=us&device_type=mobile`;
+
+        setTimeout(() => {
+            window.location.href = finalUrl;
+        }, 1500);
     } else {
-        status.innerText = "辨識內容非網址：" + originalUrl;
+        status.innerHTML = `<b style="color:var(--error-color)">辨識成功但非網址：</b><br>${qrData}`;
     }
 }
 
-/* ===== 掃描核心 ===== */
-function scan(data){
-    return jsQR(data.data, data.width, data.height, {
-        inversionAttempts:"attemptBoth"
+/* ===== 影像辨識核心 ===== */
+function performScan(imageData) {
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: "attemptBoth"
     });
+    return code;
 }
 
-/* ===== 圖片上傳 ===== */
-upload.addEventListener("change", e=>{
+/* ===== 圖片上傳處理 ===== */
+upload.addEventListener("change", e => {
     const file = e.target.files[0];
-    if(!file) return;
+    if (!file) return;
 
-    const img = new Image();
-    img.onload = ()=>{
-        let w = img.width, h = img.height, max = 1024;
-        if(w>max || h>max){
-            const s = Math.min(max/w, max/h);
-            w*=s; h*=s;
-        }
-        canvas.width = w;
-        canvas.height = h;
-        ctx.drawImage(img,0,0,w,h);
-
-        const res = scan(ctx.getImageData(0,0,w,h));
-        if(res){
-            saveLog("Upload", res.data);
-            status.innerHTML = `✅ 辨識成功<br>${res.data}`;
-            handleRedirect(res.data); // 呼叫跳轉函式
-        }else{
-            status.innerText = "❌ 無法辨識，請確認畫面清楚且只有一個 QR Code";
-        }
+    status.innerText = "處理圖片中...";
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            // 優化辨識速度，縮放大型手機照片
+            let w = img.width, h = img.height, max = 1024;
+            if (w > max || h > max) {
+                const s = Math.min(max / w, max / h);
+                w *= s; h *= s;
+            }
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
+            
+            const result = performScan(ctx.getImageData(0, 0, w, h));
+            if (result) {
+                saveLog("Upload", result.data);
+                handleRedirect(result.data);
+            } else {
+                status.innerHTML = `<b style="color:var(--error-color)">無法辨識 QR Code</b><br>請換張更清晰的照片。`;
+            }
+        };
+        img.src = event.target.result;
     };
-    img.src = URL.createObjectURL(file);
+    reader.readAsDataURL(file);
 });
 
-/* ===== 相機掃描 ===== */
-async function startCamera(){
+/* ===== 相機即時掃描 ===== */
+async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            video:{ facingMode:"environment" }
+            video: { facingMode: "environment" }
         });
         video.srcObject = stream;
         video.style.display = "block";
-        status.innerText = "📷 對準 QR Code";
+        status.innerText = "📷 請將二維碼對準相機";
         scanning = true;
         requestAnimationFrame(loop);
     } catch (err) {
-        status.innerText = "❌ 無法開啟相機，請檢查權限或使用 HTTPS 連線";
+        status.innerHTML = `<b style="color:var(--error-color)">相機開啟失敗</b><br>請確保使用 HTTPS 並授權相機權限。`;
     }
 }
 
-function loop(){
-    if(!scanning) return;
-
-    if(video.readyState === video.HAVE_ENOUGH_DATA){
+function loop() {
+    if (!scanning) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.drawImage(video,0,0);
-
-        const res = scan(ctx.getImageData(0,0,canvas.width,canvas.height));
-        if(res){
+        ctx.drawImage(video, 0, 0);
+        
+        const result = performScan(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        if (result) {
             scanning = false;
-            saveLog("Camera", res.data);
-            status.innerHTML = `✅ 辨識成功<br>${res.data}`;
-            video.srcObject.getTracks().forEach(t=>t.stop());
-            handleRedirect(res.data); // 呼叫跳轉函式
+            saveLog("Camera", result.data);
+            video.srcObject.getTracks().forEach(t => t.stop());
+            video.style.display = "none";
+            handleRedirect(result.data);
             return;
         }
     }
@@ -200,4 +233,3 @@ function loop(){
 </script>
 </body>
 </html>
-
