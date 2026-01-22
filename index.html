@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QR Code 扫描器（每日 CSV Log）</title>
+<title>QR Code 掃描器（含中轉跳轉）</title>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
@@ -38,10 +38,14 @@ button,label{
     color:white;
     margin:12px 0;
     cursor:pointer;
+    text-align: center;
+    line-height: 56px;
+    text-decoration: none;
 }
 #status{
     margin-top:18px;
     font-size:clamp(16px,4vw,18px);
+    word-break: break-all;
 }
 video{
     width:100%;
@@ -57,19 +61,19 @@ canvas{display:none}
 <div class="container">
 <div class="card">
 
-<h1>QR Code 自动扫描</h1>
+<h1>QR Code 自動掃描</h1>
 
 <label>
-📁 选择图片
+📁 選擇圖片
 <input type="file" accept="image/*" hidden id="upload">
 </label>
 
-<button onclick="startCamera()">📷 开启相机扫描</button>
+<button onclick="startCamera()">📷 開啟相機掃描</button>
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 
-<div id="status">请选择图片或使用相机扫描</div>
+<div id="status">請選擇圖片或使用相機掃描</div>
 
 </div>
 </div>
@@ -81,12 +85,14 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const status = document.getElementById("status");
 
+// 修改這裡：請放入你部署好的 Cloudflare Worker 網址
+const PROXY_URL = "https://qr-proxy.ibn957.workers.dev/?target=";
+
 let scanning = false;
 
-/* ===== 每日 Log 系统 ===== */
-const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+/* ===== 每日 Log 系統 ===== */
+const today = new Date().toISOString().slice(0,10); 
 const STORAGE_KEY = "QR_LOG_" + today;
-
 let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
 
 function saveLog(source, content){
@@ -94,31 +100,44 @@ function saveLog(source, content){
     logs.push({ time, source, content });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
 
-    let csv = "日期,时间,来源,内容\n";
+    let csv = "日期,時間,來源,內容\n";
     logs.forEach(l=>{
         csv += `${today},${l.time},${l.source},"${l.content}"\n`;
     });
 
     const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = `QR_Scan_Log_${today}.csv`;
     a.click();
-
     URL.revokeObjectURL(url);
 }
 
-/* ===== 扫描核心 ===== */
+/* ===== 執行跳轉邏輯 ===== */
+function handleRedirect(originalUrl) {
+    if(originalUrl.startsWith('http')) {
+        // 使用 Cloudflare Worker 中轉跳轉
+        const finalUrl = PROXY_URL + encodeURIComponent(originalUrl);
+        status.innerHTML += `<br><small>代理跳轉中...</small>`;
+        setTimeout(() => location.href = finalUrl, 1200);
+    } else {
+        status.innerText = "辨識內容非網址：" + originalUrl;
+    }
+}
+
+/* ===== 掃描核心 ===== */
 function scan(data){
     return jsQR(data.data, data.width, data.height, {
         inversionAttempts:"attemptBoth"
     });
 }
 
-/* ===== 图片上传 ===== */
+/* ===== 圖片上傳 ===== */
 upload.addEventListener("change", e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+
     const img = new Image();
     img.onload = ()=>{
         let w = img.width, h = img.height, max = 1024;
@@ -133,25 +152,29 @@ upload.addEventListener("change", e=>{
         const res = scan(ctx.getImageData(0,0,w,h));
         if(res){
             saveLog("Upload", res.data);
-            status.innerHTML = `✅ 辨识成功<br>${res.data}`;
-            setTimeout(()=>location.href=res.data,1200);
+            status.innerHTML = `✅ 辨識成功<br>${res.data}`;
+            handleRedirect(res.data); // 呼叫跳轉函式
         }else{
-            status.innerText = "❌ 无法辨识，请确认画面清楚且只有一个 QR Code";
+            status.innerText = "❌ 無法辨識，請確認畫面清楚且只有一個 QR Code";
         }
     };
-    img.src = URL.createObjectURL(e.target.files[0]);
+    img.src = URL.createObjectURL(file);
 });
 
-/* ===== 相机扫描 ===== */
+/* ===== 相機掃描 ===== */
 async function startCamera(){
-    const stream = await navigator.mediaDevices.getUserMedia({
-        video:{ facingMode:"environment" }
-    });
-    video.srcObject = stream;
-    video.style.display = "block";
-    status.innerText = "📷 对准 QR Code";
-    scanning = true;
-    requestAnimationFrame(loop);
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video:{ facingMode:"environment" }
+        });
+        video.srcObject = stream;
+        video.style.display = "block";
+        status.innerText = "📷 對準 QR Code";
+        scanning = true;
+        requestAnimationFrame(loop);
+    } catch (err) {
+        status.innerText = "❌ 無法開啟相機，請檢查權限或使用 HTTPS 連線";
+    }
 }
 
 function loop(){
@@ -166,9 +189,9 @@ function loop(){
         if(res){
             scanning = false;
             saveLog("Camera", res.data);
-            status.innerHTML = `✅ 辨识成功<br>${res.data}`;
+            status.innerHTML = `✅ 辨識成功<br>${res.data}`;
             video.srcObject.getTracks().forEach(t=>t.stop());
-            setTimeout(()=>location.href=res.data,1000);
+            handleRedirect(res.data); // 呼叫跳轉函式
             return;
         }
     }
