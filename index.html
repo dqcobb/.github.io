@@ -142,16 +142,18 @@ function saveLog(source, content){
 function handleRedirect(qrData) {
     if (qrData.startsWith('http')) {
         loader.style.display = "block";
-        status.innerHTML = `<b style="color:var(--success-color)">辨識成功！</b><br>正在透過 ScraperAPI 穿透封鎖...`;
+        status.innerHTML = `<b style="color:var(--success-color)">辨識成功！</b><br>正在使用高級穿透模式...`;
         
-        // 構建穿透網址：強制使用美國 IP (us)，模擬手機裝置
-        const finalUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(qrData)}&country_code=us&device_type=mobile`;
+        // 修改重點：加入 premium=true 以及 render=true
+        // premium=true: 使用住宅 IP，模仿真實人類用戶，能破解 99% 的封鎖
+        // render=true: 讓 ScraperAPI 先幫你跑完 JavaScript (如果目標網站有瀏覽器檢查)
+        const finalUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(qrData)}&country_code=us&device_type=mobile&premium=true&render=true`;
 
         setTimeout(() => {
             window.location.href = finalUrl;
         }, 1500);
     } else {
-        status.innerHTML = `<b style="color:var(--error-color)">辨識成功但非網址：</b><br>${qrData}`;
+        status.innerHTML = `<b style="color:var(--error-color)">內容非網址：</b><br>${qrData}`;
     }
 }
 
@@ -233,3 +235,4 @@ function loop() {
 </script>
 </body>
 </html>
+
