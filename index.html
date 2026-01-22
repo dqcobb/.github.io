@@ -100,7 +100,7 @@ function saveLog(source, content){
     logs.push({ time, source, content });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
 
-    let csv = "日期,時間,來源,內容\n";
+    let csv = "Date,Time,Source,Content\n";
     logs.forEach(l=>{
         csv += `${today},${l.time},${l.source},"${l.content}"\n`;
     });
@@ -200,3 +200,4 @@ function loop(){
 </script>
 </body>
 </html>
+
