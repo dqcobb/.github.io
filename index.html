@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Code 扫描器（每日 CSV Log）</title>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+    background:#f2f4f8;
+}
+.container{
+    max-width:480px;
+    margin:auto;
+    padding:20px;
+}
+.card{
+    background:#fff;
+    border-radius:18px;
+    padding:24px;
+    box-shadow:0 6px 20px rgba(0,0,0,.08);
+}
+h1{
+    font-size:clamp(22px,5vw,28px);
+}
+button,label{
+    display:block;
+    width:100%;
+    height:56px;
+    font-size:18px;
+    border-radius:14px;
+    border:none;
+    background:#007bff;
+    color:white;
+    margin:12px 0;
+    cursor:pointer;
+}
+#status{
+    margin-top:18px;
+    font-size:clamp(16px,4vw,18px);
+}
+video{
+    width:100%;
+    margin-top:16px;
+    border-radius:16px;
+    display:none;
+}
+canvas{display:none}
+</style>
+</head>
+
+<body>
+<div class="container">
+<div class="card">
+
+<h1>QR Code 自动扫描</h1>
+
+<label>
+📁 选择图片
+<input type="file" accept="image/*" hidden id="upload">
+</label>
+
+<button onclick="startCamera()">📷 开启相机扫描</button>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<div id="status">请选择图片或使用相机扫描</div>
+
+</div>
+</div>
+
+<script>
+const upload = document.getElementById("upload");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");
+
+let scanning = false;
+
+/* ===== 每日 Log 系统 ===== */
+const today = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+const STORAGE_KEY = "QR_LOG_" + today;
+
+let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+function saveLog(source, content){
+    const time = new Date().toLocaleString("zh-TW",{hour12:false});
+    logs.push({ time, source, content });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+
+    let csv = "日期,时间,来源,内容\n";
+    logs.forEach(l=>{
+        csv += `${today},${l.time},${l.source},"${l.content}"\n`;
+    });
+
+    const blob = new Blob([csv], { type:"text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `QR_Scan_Log_${today}.csv`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
+/* ===== 扫描核心 ===== */
+function scan(data){
+    return jsQR(data.data, data.width, data.height, {
+        inversionAttempts:"attemptBoth"
+    });
+}
+
+/* ===== 图片上传 ===== */
+upload.addEventListener("change", e=>{
+    const img = new Image();
+    img.onload = ()=>{
+        let w = img.width, h = img.height, max = 1024;
+        if(w>max || h>max){
+            const s = Math.min(max/w, max/h);
+            w*=s; h*=s;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(img,0,0,w,h);
+
+        const res = scan(ctx.getImageData(0,0,w,h));
+        if(res){
+            saveLog("Upload", res.data);
+            status.innerHTML = `✅ 辨识成功<br>${res.data}`;
+            setTimeout(()=>location.href=res.data,1200);
+        }else{
+            status.innerText = "❌ 无法辨识，请确认画面清楚且只有一个 QR Code";
+        }
+    };
+    img.src = URL.createObjectURL(e.target.files[0]);
+});
+
+/* ===== 相机扫描 ===== */
+async function startCamera(){
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:"environment" }
+    });
+    video.srcObject = stream;
+    video.style.display = "block";
+    status.innerText = "📷 对准 QR Code";
+    scanning = true;
+    requestAnimationFrame(loop);
+}
+
+function loop(){
+    if(!scanning) return;
+
+    if(video.readyState === video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video,0,0);
+
+        const res = scan(ctx.getImageData(0,0,canvas.width,canvas.height));
+        if(res){
+            scanning = false;
+            saveLog("Camera", res.data);
+            status.innerHTML = `✅ 辨识成功<br>${res.data}`;
+            video.srcObject.getTracks().forEach(t=>t.stop());
+            setTimeout(()=>location.href=res.data,1000);
+            return;
+        }
+    }
+    requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
