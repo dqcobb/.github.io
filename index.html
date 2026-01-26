@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>QR Code 智慧掃描跳轉器</title>
+<title>QR Code 智慧扫描跳转器</title>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 
@@ -26,7 +26,7 @@ body {
 h1 { font-size: 24px; margin-bottom: 8px; color: #1a1a1a; }
 p { font-size: 14px; color: #666; margin-bottom: 24px; }
 
-/* 按鈕樣式 */
+/* 按钮样式 */
 .btn {
     display: block;
     width: 100%;
@@ -55,7 +55,7 @@ p { font-size: 14px; color: #666; margin-bottom: 24px; }
     background: #f8f9fa;
 }
 
-/* 影片與畫布 */
+/* 影片与画布 */
 video {
     width: 100%;
     margin-top: 16px;
@@ -65,7 +65,7 @@ video {
 }
 canvas { display: none; }
 
-/* 載入動畫 */
+/* 载入动画 */
 .spinner {
     display: none;
     width: 24px;
@@ -83,18 +83,18 @@ canvas { display: none; }
 <body>
 <div class="container">
     <div class="card">
-        <h1>QR Code 自動跳轉</h1>
-        <p>支援穿透區域封鎖 (ScraperAPI)</p>
+        <h1>QR Code 自动跳转</h1>
+        <p>支援穿透区域封锁 (ScraperAPI)</p>
 
         <label class="btn btn-upload">
-            📁 選擇圖片 / 拍照
+            📁 选择图片 / 拍照
             <input type="file" accept="image/*" hidden id="upload">
         </label>
 
-        <button class="btn btn-camera" onclick="startCamera()">📷 開啟相機掃描</button>
+        <button class="btn btn-camera" onclick="startCamera()">📷 开启相机扫描</button>
 
         <div id="loader" class="spinner"></div>
-        <div id="status">準備就緒，請操作</div>
+        <div id="status">准备就绪，请操作</div>
 
         <video id="video" autoplay playsinline></video>
         <canvas id="canvas"></canvas>
@@ -110,13 +110,13 @@ const status = document.getElementById("status");
 const loader = document.getElementById("loader");
 
 // ==========================================
-// 1. 設定區：填入你的 ScraperAPI Key
+// 1. 设定区：填入你的 ScraperAPI Key
 // ==========================================
 const SCRAPER_API_KEY = "5ddbe6f1681816637ad2856f7c3d56b2"; 
 
 let scanning = false;
 
-/* ===== 每日 Log 系統 ===== */
+/* ===== 每日 Log 系统 ===== */
 const today = new Date().toISOString().slice(0,10);
 const STORAGE_KEY = "QR_LOG_" + today;
 let logs = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -126,8 +126,8 @@ function saveLog(source, content){
     logs.push({ time, source, content });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
     
-    // 產生並觸發下載 CSV (靜默紀錄)
-    let csv = "日期,時間,來源,內容\n";
+    // 产生并触发下载 CSV (静默纪录)
+    let csv = "日期,时间,来源,内容\n";
     logs.forEach(l => csv += `${today},${l.time},${l.source},"${l.content}"\n`);
     const blob = new Blob(["\ufeff" + csv], { type:"text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -138,26 +138,26 @@ function saveLog(source, content){
     URL.revokeObjectURL(url);
 }
 
-/* ===== 核心跳轉邏輯 (ScraperAPI 中轉) ===== */
+/* ===== 核心跳转逻辑 (ScraperAPI 中转) ===== */
 function handleRedirect(qrData) {
     if (qrData.startsWith('http')) {
         loader.style.display = "block";
-        status.innerHTML = `<b style="color:var(--success-color)">辨識成功！</b><br>正在使用高級穿透模式...`;
+        status.innerHTML = `<b style="color:var(--success-color)">辨识成功！</b><br>正在使用高级穿透模式...`;
         
-        // 修改重點：加入 premium=true 以及 render=true
-        // premium=true: 使用住宅 IP，模仿真實人類用戶，能破解 99% 的封鎖
-        // render=true: 讓 ScraperAPI 先幫你跑完 JavaScript (如果目標網站有瀏覽器檢查)
+        // 修改重点：加入 premium=true 以及 render=true
+        // premium=true: 使用住宅 IP，模仿真实人类用户，能破解 99% 的封锁
+        // render=true: 让 ScraperAPI 先帮你跑完 JavaScript (如果目标网站有浏览器检查)
         const finalUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(qrData)}&country_code=us&device_type=mobile&premium=true&render=true`;
 
         setTimeout(() => {
             window.location.href = finalUrl;
         }, 1500);
     } else {
-        status.innerHTML = `<b style="color:var(--error-color)">內容非網址：</b><br>${qrData}`;
+        status.innerHTML = `<b style="color:var(--error-color)">内容非网址：</b><br>${qrData}`;
     }
 }
 
-/* ===== 影像辨識核心 ===== */
+/* ===== 影像辨识核心 ===== */
 function performScan(imageData) {
     const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: "attemptBoth"
@@ -165,17 +165,17 @@ function performScan(imageData) {
     return code;
 }
 
-/* ===== 圖片上傳處理 ===== */
+/* ===== 图片上传处理 ===== */
 upload.addEventListener("change", e => {
     const file = e.target.files[0];
     if (!file) return;
 
-    status.innerText = "處理圖片中...";
+    status.innerText = "处理图片中...";
     const reader = new FileReader();
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            // 優化辨識速度，縮放大型手機照片
+            // 优化辨识速度，缩放大型手机照片
             let w = img.width, h = img.height, max = 1024;
             if (w > max || h > max) {
                 const s = Math.min(max / w, max / h);
@@ -189,7 +189,7 @@ upload.addEventListener("change", e => {
                 saveLog("Upload", result.data);
                 handleRedirect(result.data);
             } else {
-                status.innerHTML = `<b style="color:var(--error-color)">無法辨識 QR Code</b><br>請換張更清晰的照片。`;
+                status.innerHTML = `<b style="color:var(--error-color)">无法辨识 QR Code</b><br>请换张更清晰的照片。`;
             }
         };
         img.src = event.target.result;
@@ -197,7 +197,7 @@ upload.addEventListener("change", e => {
     reader.readAsDataURL(file);
 });
 
-/* ===== 相機即時掃描 ===== */
+/* ===== 相机即时扫描 ===== */
 async function startCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -205,11 +205,11 @@ async function startCamera() {
         });
         video.srcObject = stream;
         video.style.display = "block";
-        status.innerText = "📷 請將二維碼對準相機";
+        status.innerText = "📷 请将二维码对准相机";
         scanning = true;
         requestAnimationFrame(loop);
     } catch (err) {
-        status.innerHTML = `<b style="color:var(--error-color)">相機開啟失敗</b><br>請確保使用 HTTPS 並授權相機權限。`;
+        status.innerHTML = `<b style="color:var(--error-color)">相机开启失败</b><br>请确保使用 HTTPS 并授权相机权限。`;
     }
 }
 
@@ -235,4 +235,5 @@ function loop() {
 </script>
 </body>
 </html>
+
 
